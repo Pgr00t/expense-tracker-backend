@@ -28,7 +28,7 @@ class ExpenseViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['get'])
     def convert_currency(self, request):
         """
-        Converts a given amount from a base currency to a target currency using Frankfurter API.
+        Converts a given amount from a base currency to a target currency using ExchangeRate-API (Fallback from Frankfurter).
         Query params: amount, from (default USD), to (default EUR)
         """
         amount = request.query_params.get('amount')
@@ -38,21 +38,42 @@ class ExpenseViewSet(viewsets.ModelViewSet):
         if not amount:
             return Response({'error': 'Amount parameter is required'}, status=status.HTTP_400_BAD_REQUEST)
 
+        try:
+            val = float(amount)
+        except ValueError:
+            return Response({'error': 'Invalid amount provided'}, status=status.HTTP_400_BAD_REQUEST)
+
         if base_currency == target_currency:
-             return Response({'converted_amount': float(amount), 'rate': 1.0, 'currency': target_currency})
+             return Response({'converted_amount': val, 'rate': 1.0, 'currency': target_currency})
 
         try:
-            # Frankfurter API
-            url = f"https://api.frankfurter.app/latest?amount={amount}&from={base_currency}&to={target_currency}"
-            response = requests.get(url)
+            # Using ExchangeRate-API (v6) as it's often more stable than Frankfurter
+            url = f"https://open.er-api.com/v6/latest/{base_currency}"
+            response = requests.get(url, timeout=10)
+            
+            if response.status_code == 404:
+                return Response({'error': f'Base currency {base_currency} not supported'}, status=status.HTTP_404_NOT_FOUND)
+            
             response.raise_for_status()
             data = response.json()
             
-            return Response({
-                'converted_amount': data['rates'].get(target_currency),
-                'rate': data['rates'].get(target_currency) / float(amount) if hasattr(data, 'rates') else None,
-                'currency': target_currency,
-                'base': base_currency
-            })
+            if data.get('result') == 'success' and 'rates' in data:
+                rate = data['rates'].get(target_currency)
+                if rate:
+                    return Response({
+                        'converted_amount': val * rate,
+                        'rate': rate,
+                        'currency': target_currency,
+                        'base': base_currency
+                    })
+                else:
+                    return Response({'error': f'Target currency {target_currency} not found'}, status=status.HTTP_404_NOT_FOUND)
+            else:
+                return Response({'error': 'Unexpected response from ExchangeRate-API'}, status=status.HTTP_502_BAD_GATEWAY)
+                
+        except requests.exceptions.Timeout:
+            return Response({'error': 'Currency API timed out'}, status=status.HTTP_504_GATEWAY_TIMEOUT)
         except requests.exceptions.RequestException as e:
-            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return Response({'error': f'Currency API error: {str(e)}'}, status=status.HTTP_502_BAD_GATEWAY)
+        except Exception as e:
+            return Response({'error': f'An unexpected error occurred: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
