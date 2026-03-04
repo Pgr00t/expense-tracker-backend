@@ -1,5 +1,6 @@
 import requests
 
+
 def test_conversion(amount, from_curr, to_curr):
     url = f"http://localhost:8000/api/expenses/convert_currency/?amount={amount}&from={from_curr}&to={to_curr}"
     try:
@@ -10,6 +11,7 @@ def test_conversion(amount, from_curr, to_curr):
         print("-" * 20)
     except Exception as e:
         print(f"Error: {e}")
+
 
 if __name__ == "__main__":
     # Test valid conversion
