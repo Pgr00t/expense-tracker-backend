@@ -37,6 +37,12 @@ ALLOWED_HOSTS = os.environ.get("ALLOWED_HOSTS", "*").split(",")
 
 CORS_ALLOW_ALL_ORIGINS = os.environ.get("CORS_ALLOW_ALL_ORIGINS", "True") == "True"
 
+# Proxy settings for AWS API Gateway / HTTPS
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+USE_X_FORWARDED_HOST = True
+# Disable slash redirection to prevent POST data loss
+APPEND_SLASH = False
+
 CORS_ALLOW_METHODS = [
     "DELETE",
     "GET",
